@@ -1,0 +1,1158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>High-Dimensional Equator Phenomenon</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body);"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background-color: #f8fafc; font-family: 'Inter', sans-serif; }
+        #app-container { display: flex; height: 100vh; flex-direction: column; }
+        @media (min-width: 768px) { #app-container { flex-direction: row; } }
+        
+        #viewer-container { flex: 1; position: relative; background: #ffffff; cursor: grab; }
+        #viewer-container:active { cursor: grabbing; }
+        #labels-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
+        #ui-panel { width: 100%; max-width: 500px; background: #f8fafc; display: flex; flex-direction: column; border-left: 1px solid #e2e8f0; z-index: 10; box-shadow: -4px 0 15px rgba(0,0,0,0.03); }
+        @media (max-width: 767px) { #ui-panel { height: 50%; border-top: 1px solid #e2e8f0; border-left: none; } #viewer-container { height: 50%; } }
+        
+        /* Typography & Scrollbar */
+        .step-content { display: none; flex: 1; overflow-y: auto; padding: 2rem; }
+        .step-content.active { display: block; animation: fadeIn 0.4s ease-out; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* 3D Overlay Labels */
+        .math-label { position: absolute; transform: translate(-50%, -50%); color: #334155; font-weight: 600; font-size: 1.1rem; pointer-events: none; text-shadow: 2px 2px 0 #fff, -2px -2px 0 #fff, 2px -2px 0 #fff, -2px 2px 0 #fff; z-index: 5; }
+        .axis-label { font-style: italic; color: #64748b; font-family: serif;}
+        
+        /* Interactive Elements */
+        .t-btn { transition: all 0.2s; }
+        .t-btn.active { background-color: #3b82f6; color: white; border-color: #2563eb; }
+        .nav-btn { transition: background 0.2s; }
+        .nav-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+
+<div id="app-container">
+    <div id="viewer-container">
+        <!-- The canvas will be injected here by Three.js -->
+        <div class="absolute top-4 left-4 bg-white/90 backdrop-blur-md px-3 py-2 rounded-lg shadow-sm border border-gray-100 z-10 pointer-events-none flex flex-col gap-1.5 text-[11px] text-gray-500 font-medium">
+            <div class="flex items-center gap-2"><svg class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"></path></svg> Drag to rotate</div>
+            <div class="flex items-center gap-2"><svg class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7"></path></svg> Scroll to zoom</div>
+            <div class="flex items-center gap-2"><svg class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg> Right-click to pan</div>
+        </div>
+        <div id="labels-container">
+            <div id="label-x1" class="math-label axis-label">x₁</div>
+            <div id="label-x2" class="math-label axis-label">x₂</div>
+            <div id="label-x3" class="math-label axis-label">x₃</div>
+            <div id="label-radius" class="math-label" style="display:none; color: #dc2626; font-size:0.95rem;">r = <span id="r-value">1.00</span></div>
+            <div id="label-dt" class="math-label" style="display:none; color: #ea580c; font-size:1rem;">Δt</div>
+            
+            <div id="eq-sphere" class="math-label bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-lg shadow-sm border border-blue-200 text-blue-700 text-sm whitespace-nowrap tracking-wide" style="display:none;">x₁² + x₂² + x₃² = 1</div>
+            <div id="eq-plane" class="math-label bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-lg shadow-sm border border-yellow-300 text-yellow-800 text-sm whitespace-nowrap tracking-wide" style="display:none;">x₁ = <span id="eq-t-val">0.00</span></div>
+            <div id="eq-slice" class="math-label bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-lg shadow-sm border border-red-200 text-red-700 text-sm whitespace-nowrap tracking-wide" style="display:none;">x₂² + x₃² = <span id="eq-r2-val">1.00</span></div>
+            <div id="eq-uplane" class="math-label bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-lg shadow-sm border border-emerald-200 text-emerald-800 text-sm whitespace-nowrap tracking-wide" style="display:none;">⟨x, u⟩ = 0</div>
+            <div id="eq-slab" class="math-label bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-lg shadow-sm border border-emerald-200 text-emerald-800 text-sm whitespace-nowrap tracking-wide" style="display:none;">|⟨x, u⟩| ≤ c/√d</div>
+        </div>
+    </div>
+
+    <div id="ui-panel">
+        <div class="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center shrink-0 shadow-sm z-10">
+            <h1 class="font-bold text-gray-800 text-lg tracking-tight">High-Dimensional Geometry</h1>
+            <div class="flex items-center gap-3">
+                <button id="tts-btn" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-indigo-50 text-indigo-600 rounded-full hover:bg-indigo-100 transition-colors shadow-sm" title="Listen to an AI audio explanation of this step">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5 10v4a2 2 0 002 2h2.27l4.15 4.15a.5.5 0 00.85-.35V4.15a.5.5 0 00-.85-.35L9.27 8H7a2 2 0 00-2 2z"></path></svg>
+                    <span id="tts-label">Listen</span>
+                </button>
+                <span id="step-indicator" class="text-xs font-semibold px-2 py-1 bg-blue-100 text-blue-700 rounded-full">Step 1 of 5</span>
+            </div>
+        </div>
+
+        <!-- Step 1 -->
+        <div class="step-content active" id="step-1">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">The Unit Sphere</h2>
+            <p class="text-gray-600 mb-4 leading-relaxed">
+                To understand the strange properties of high-dimensional space, we first ground our intuition in a familiar setting: the 3D unit sphere.
+            </p>
+            <div class="bg-gray-50 p-4 rounded-xl border border-gray-100 mb-6 text-center shadow-inner">
+                <p class="text-gray-700 font-medium mb-2">Equation of the sphere:</p>
+                <div class="text-lg">$$x_1^2 + x_2^2 + x_3^2 = 1$$</div>
+            </div>
+            <p class="text-gray-600 leading-relaxed">
+                Notice the horizontal axis is labelled \(x_1\). Imagine we pick a uniformly random point on this surface. We want to study its behavior by focusing purely on its first coordinate, \(x_1\).
+            </p>
+        </div>
+
+        <!-- Step 2 -->
+        <div class="step-content" id="step-2">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">Slicing the Sphere</h2>
+            <p class="text-gray-600 mb-4 leading-relaxed">
+                Let's fix the first coordinate at a specific value, \(x_1 = t\). Geometrically, this means we are cutting the sphere with a vertical plane.
+            </p>
+            <div class="bg-gray-50 p-4 rounded-xl border border-gray-100 mb-6 shadow-inner">
+                <p class="text-gray-700 mb-2">The resulting cross-section satisfies:</p>
+                <div class="text-lg text-center mb-2">$$x_2^2 + x_3^2 = 1 - t^2$$</div>
+                <p class="text-sm text-gray-500 text-center">This is a circle with radius \(r = \sqrt{1 - t^2}\).</p>
+            </div>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Drag to change \(t\): <span id="slider-val" class="font-bold text-blue-600">0.00</span></label>
+                <input type="range" id="t-slider" min="-0.99" max="0.99" step="0.01" value="0" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
+            </div>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="step-content" id="step-3">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">Comparing Cross-Sections</h2>
+            <p class="text-gray-600 mb-6 leading-relaxed">
+                Observe how the size of the cross-section changes depending on where we slice along the \(x_1\)-axis.
+            </p>
+            <div class="space-y-3 mb-6">
+                <button onclick="setT(0, this)" class="t-btn active w-full text-left px-4 py-3 border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50">
+                    <span class="font-bold">Equator (\(t = 0\))</span>
+                    <span class="block text-sm mt-1 opacity-80">Largest cross-section. Radius \(r = 1\).</span>
+                </button>
+                <button onclick="setT(0.5, this)" class="t-btn w-full text-left px-4 py-3 border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50">
+                    <span class="font-bold">Midway (\(t = 0.5\))</span>
+                    <span class="block text-sm mt-1 opacity-80">Radius shrinks to \(r = \sqrt{1 - 0.5^2} \approx 0.866\).</span>
+                </button>
+                <button onclick="setT(0.9, this)" class="t-btn w-full text-left px-4 py-3 border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50">
+                    <span class="font-bold">Near Pole (\(t = 0.9\))</span>
+                    <span class="block text-sm mt-1 opacity-80">Radius is very small \(r = \sqrt{1 - 0.9^2} \approx 0.436\).</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Step 4 -->
+        <div class="step-content" id="step-4">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">Probability & Surface Area</h2>
+            <p class="text-gray-600 mb-4 leading-relaxed">
+                Consider a thin band between \(x_1 = t\) and \(x_1 = t + \Delta t\). The probability that a random point lands in this band is proportional to its surface area.
+            </p>
+            <div class="bg-orange-50 border-l-4 border-orange-500 p-4 mb-4 rounded-r-lg">
+                <h4 class="font-semibold text-orange-800 mb-1">The Geometric Intuition</h4>
+                <p class="text-orange-900 text-sm leading-relaxed">
+                    A larger cross-section means the band has a wider circumference, allowing it to encompass more points. Since the absolute largest cross-section is exactly at \(t=0\), points have a tendency to cluster near the equator.
+                </p>
+            </div>
+            <div class="mt-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Move the band:</label>
+                <input type="range" id="band-slider" min="-0.8" max="0.8" step="0.01" value="0.5" class="w-full h-2 bg-orange-200 rounded-lg appearance-none cursor-pointer accent-orange-600">
+            </div>
+        </div>
+
+        <!-- Step 5 -->
+        <div class="step-content" id="step-5">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">The Phenomenon in d-Dimensions</h2>
+            <p class="text-gray-600 mb-4 text-sm leading-relaxed">
+                In 3D, this shrinking effect is mild. But let's look at what happens in \(d\) dimensions (where \(d\) is very large, e.g., 1000).
+            </p>
+            
+            <div class="flex flex-col gap-3 mb-6">
+                <!-- 3D vs d-D comparison -->
+                <div class="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                    <span class="text-xs font-bold uppercase text-gray-500 tracking-wider">In 3D</span>
+                    <p class="text-sm mt-1">Cross-section is a circle (1-dimensional boundary). Size scales directly with \(r = \sqrt{1-t^2}\).</p>
+                </div>
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <span class="text-xs font-bold uppercase text-blue-600 tracking-wider">In d-Dimensions</span>
+                    <p class="text-sm mt-1">Fixing \(x_1=t\) yields a \((d-2)\)-dimensional sphere: $$x_2^2 + \dots + x_d^2 = 1-t^2$$</p>
+                    <p class="text-sm mt-2">Its size scales by \(r^{d-2} = (1-t^2)^{\frac{d-2}{2}}\).</p>
+                </div>
+            </div>
+
+            <p class="text-gray-700 font-semibold mb-2">The Conclusion:</p>
+            <p class="text-gray-600 text-sm leading-relaxed">
+                As \(d \to \infty\), the term \((1-t^2)^{\frac{d-2}{2}}\) crushes down to zero exponentially fast for <em>any</em> \(t \neq 0\). Thus, virtually 100% of the surface area—and probability—is concentrated in an infinitesimally thin band around the equator \(x_1 = 0\).
+            </p>
+        </div>
+
+        <!-- Step 6 -->
+        <div class="step-content" id="step-6">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">Any Direction: Vector \(u\)</h2>
+            <p class="text-gray-600 mb-4 leading-relaxed">
+                There is nothing special about the first coordinate \(x_1\). Imagine choosing <em>any</em> direction vector \(u\) of unit length (\(\|u\| = 1\)).
+            </p>
+            <p class="text-gray-600 mb-4 leading-relaxed">
+                Instead of focusing on \(x_1\), we ask about the projection \(\langle x, u \rangle\). How far does a random point \(x\) extend in the direction of \(u\)?
+            </p>
+            <div class="bg-emerald-50 border-l-4 border-emerald-500 p-4 mb-6 rounded-r-lg shadow-sm">
+                <h4 class="font-semibold text-emerald-800 mb-1">Rotational Symmetry</h4>
+                <p class="text-emerald-900 text-sm leading-relaxed">
+                    Because the sphere is perfectly rotationally symmetric, we can mentally rotate our coordinate system so that \(u\) becomes our new \(x_1\) axis. Therefore, \(\langle x, u \rangle\) behaves exactly like \(x_1\)!
+                </p>
+            </div>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Rotate direction \(u\): <span id="u-angle-val" class="font-bold text-emerald-600">45°</span></label>
+                <input type="range" id="u-angle-slider" min="0" max="360" step="1" value="45" class="w-full h-2 bg-emerald-200 rounded-lg appearance-none cursor-pointer accent-emerald-600">
+            </div>
+        </div>
+
+        <!-- Step 7 -->
+        <div class="step-content" id="step-7">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">The Thin Slab</h2>
+            <p class="text-gray-600 mb-4 leading-relaxed">
+                The equation \(\langle x, u \rangle = 0\) defines a hyperplane passing through the origin. Think of this as the new "equator" perpendicular to \(u\).
+            </p>
+            <div class="bg-gray-50 p-4 rounded-xl border border-gray-200 mb-6 shadow-inner text-center">
+                <p class="text-gray-700 font-medium mb-2">The remarkable high-dimensional fact:</p>
+                <div class="text-lg text-emerald-700 font-semibold mb-2">$$\langle x, u \rangle \text{ is typically } \mathcal{O}\left(\frac{1}{\sqrt{d}}\right)$$</div>
+            </div>
+            <p class="text-gray-600 mb-6 leading-relaxed">
+                The region \(|\langle x, u \rangle| \le \frac{c}{\sqrt{d-1}}\) forms a <strong>thin slab</strong> around this hyperplane. Even though this slab becomes thinner as \(d\) increases, it contains an overwhelmingly large fraction of the ball's volume!
+            </p>
+            <div class="mb-8">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Adjust slab thickness:</label>
+                <input type="range" id="slab-slider" min="0.02" max="0.5" step="0.01" value="0.15" class="w-full h-2 bg-emerald-200 rounded-lg appearance-none cursor-pointer accent-emerald-600">
+            </div>
+
+            <!-- AI Quiz Section -->
+            <div class="mt-8 border-t border-gray-200 pt-5 pb-4">
+                <button id="generate-quiz-btn" class="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl hover:from-purple-700 hover:to-indigo-700 transition-all font-semibold text-sm shadow-md hover:shadow-lg">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+                    Generate AI Knowledge Check
+                </button>
+                <div id="quiz-container" class="mt-4 hidden space-y-4">
+                    <!-- Quiz dynamically injected here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation -->
+        <div class="p-4 bg-gray-50 border-t border-gray-200 flex justify-between shrink-0 mt-auto z-10">
+            <button id="prev-btn" class="nav-btn px-5 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50 focus:outline-none" disabled>
+                Previous
+            </button>
+            <button id="next-btn" class="nav-btn px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg shadow-sm hover:bg-blue-700 focus:outline-none">
+                Next Step
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Floating AI Chat Widget -->
+<button id="ai-chat-btn" class="fixed bottom-6 right-6 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-xl z-50 flex items-center justify-center transition-transform hover:scale-105 group">
+    <svg class="w-6 h-6 group-hover:animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
+</button>
+
+<div id="ai-chat-window" class="fixed bottom-24 right-6 w-[350px] md:w-[400px] h-[500px] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col z-50 hidden overflow-hidden transition-all duration-300 transform origin-bottom-right">
+    <div class="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-5 py-4 font-semibold flex justify-between items-center shadow-md">
+        <div class="flex items-center gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+            <span>AI Geometry Tutor</span>
+        </div>
+        <button id="close-chat-btn" class="text-white/80 hover:text-white transition-colors focus:outline-none">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+    </div>
+    <div id="chat-messages" class="flex-1 overflow-y-auto p-4 flex flex-col gap-4 text-sm bg-gray-50/50">
+        <div class="bg-white border border-gray-100 shadow-sm text-gray-800 rounded-2xl rounded-tl-sm p-4 self-start max-w-[85%] leading-relaxed">
+            Hi there! 👋 I'm an AI tutor. Are you curious about how the radius <span class="font-mono bg-gray-100 px-1 rounded text-blue-600">r = √(1-t²)</span> works in 1000 dimensions? Ask me anything!
+        </div>
+    </div>
+    <div class="p-4 border-t border-gray-100 bg-white">
+        <form id="chat-form" class="flex gap-2">
+            <input type="text" id="chat-input" class="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 bg-gray-50 transition-all text-sm" placeholder="Ask a math question..." autocomplete="off" required>
+            <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-5 py-2.5 font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/50 flex items-center justify-center">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+            </button>
+        </form>
+    </div>
+</div>
+
+<script>
+    let currentStep = 1;
+    const totalSteps = 7;
+    
+    // UI Elements
+    const prevBtn = document.getElementById('prev-btn');
+    const nextBtn = document.getElementById('next-btn');
+    const stepIndicator = document.getElementById('step-indicator');
+    const steps = document.querySelectorAll('.step-content');
+    const tSlider = document.getElementById('t-slider');
+    const sliderVal = document.getElementById('slider-val');
+    const bandSlider = document.getElementById('band-slider');
+    
+    const uAngleSlider = document.getElementById('u-angle-slider');
+    const uAngleVal = document.getElementById('u-angle-val');
+    const slabSlider = document.getElementById('slab-slider');
+
+    // 3D Scene Variables
+    let scene, camera, renderer, controls;
+    let sphereGroup, mainSphere, wireframe;
+    let planeMesh, crossSectionTorus;
+    let bandMesh;
+    let uGroup, uArrow, uPlaneMesh, uSlabMesh;
+    
+    // Animation Targets
+    let currentT = 0;
+    let targetT = 0;
+    const R = 2.0; // Base sphere radius
+    let isBandMode = false;
+    let targetBandT = 0.5;
+    let currentBandT = 0.5;
+    const dt = 0.15; // Width of the band
+
+    let targetUAngle = Math.PI / 4; // 45 degrees
+    let currentUAngle = Math.PI / 4;
+    let slabThickness = 0.15;
+    let targetSlabThickness = 0.15;
+
+    function init3D() {
+        const container = document.getElementById('viewer-container');
+        
+        // Scene setup
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xffffff);
+        
+        // Camera setup
+        camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
+        // Position camera to favor looking at the X-axis (x1)
+        camera.position.set(4, 2.5, 5);
+        
+        // Renderer setup
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // optimize for high DPI
+        container.insertBefore(renderer.domElement, document.getElementById('labels-container'));
+        
+        // Controls
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.enablePan = true;
+        controls.enableZoom = true;
+        controls.minDistance = 2;
+        controls.maxDistance = 20;
+        
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+        directionalLight.position.set(10, 10, 10);
+        scene.add(directionalLight);
+
+        sphereGroup = new THREE.Group();
+        scene.add(sphereGroup);
+
+        // 1. Transparent Solid Sphere
+        const sphereGeo = new THREE.SphereGeometry(R, 64, 64);
+        const sphereMat = new THREE.MeshLambertMaterial({ 
+            color: 0x3b82f6, 
+            transparent: true, 
+            opacity: 0.12,
+            depthWrite: false
+        });
+        mainSphere = new THREE.Mesh(sphereGeo, sphereMat);
+        sphereGroup.add(mainSphere);
+
+        // 2. Wireframe Overlay
+        const wireGeo = new THREE.WireframeGeometry(sphereGeo);
+        const wireMat = new THREE.LineBasicMaterial({ color: 0x94a3b8, transparent: true, opacity: 0.15 });
+        wireframe = new THREE.LineSegments(wireGeo, wireMat);
+        sphereGroup.add(wireframe);
+
+        // 3. Axes
+        createAxes();
+
+        // Slicing Plane (Perpendicular to X-axis)
+        const planeGeo = new THREE.PlaneGeometry(R*2.5, R*2.5);
+        const planeMat = new THREE.MeshBasicMaterial({ 
+            color: 0xeab308, // Yellow-orange
+            side: THREE.DoubleSide, 
+            transparent: true, 
+            opacity: 0.25,
+            depthWrite: false
+        });
+        planeMesh = new THREE.Mesh(planeGeo, planeMat);
+        planeMesh.rotation.y = Math.PI / 2; // Face the X-axis
+        planeMesh.visible = false;
+        scene.add(planeMesh);
+
+        // Cross Section Outline (Torus to allow thickness)
+        const torusMat = new THREE.MeshBasicMaterial({ color: 0xdc2626 }); // Red
+        crossSectionTorus = new THREE.Mesh(new THREE.TorusGeometry(R, 0.03, 16, 100), torusMat);
+        crossSectionTorus.rotation.y = Math.PI / 2;
+        crossSectionTorus.visible = false;
+        scene.add(crossSectionTorus);
+
+        // Band mesh (will be generated dynamically based on t and dt)
+        const bandMat = new THREE.MeshBasicMaterial({
+            color: 0xf97316, // Orange
+            transparent: true,
+            opacity: 0.7,
+            side: THREE.DoubleSide
+        });
+        bandMesh = new THREE.Mesh(new THREE.BufferGeometry(), bandMat);
+        // Rotate sphere geometry so its Y axis aligns with X axis
+        bandMesh.rotation.z = -Math.PI / 2; 
+        bandMesh.visible = false;
+        scene.add(bandMesh);
+
+        uGroup = new THREE.Group();
+        scene.add(uGroup);
+
+        // Vector u (Arrow)
+        const dir = new THREE.Vector3(1, 0, 0); // Base direction along X
+        uArrow = new THREE.ArrowHelper(dir, new THREE.Vector3(0,0,0), R * 1.6, 0x059669, 0.25, 0.12);
+        uGroup.add(uArrow);
+
+        // Hyperplane <x, u> = 0
+        const uPlaneGeo = new THREE.CircleGeometry(R, 64);
+        const uPlaneMat = new THREE.MeshBasicMaterial({ 
+            color: 0x059669, 
+            side: THREE.DoubleSide, 
+            transparent: true, 
+            opacity: 0.25, 
+            depthWrite: false 
+        });
+        uPlaneMesh = new THREE.Mesh(uPlaneGeo, uPlaneMat);
+        uPlaneMesh.rotation.y = Math.PI / 2; // Face the X-axis locally so its normal is along vector u
+        uGroup.add(uPlaneMesh);
+
+        // Slab |<x, u>| <= c/sqrt(d)
+        const uSlabMat = new THREE.MeshBasicMaterial({ 
+            color: 0x10b981, 
+            transparent: true, 
+            opacity: 0.6, 
+            side: THREE.DoubleSide 
+        });
+        uSlabMesh = new THREE.Mesh(new THREE.BufferGeometry(), uSlabMat);
+        uSlabMesh.rotation.z = -Math.PI / 2; // Align to local X axis
+        uGroup.add(uSlabMesh);
+
+        window.addEventListener('resize', onWindowResize, false);
+        
+        // Start animation loop
+        animate();
+    }
+
+    function createAxes() {
+        const material = new THREE.LineBasicMaterial({ color: 0x475569, linewidth: 2 });
+        const len = R * 1.4;
+        
+        // X1 Axis (Horizontal)
+        const ptsX = [new THREE.Vector3(-len, 0, 0), new THREE.Vector3(len, 0, 0)];
+        const lineX = new THREE.Line(new THREE.BufferGeometry().setFromPoints(ptsX), material);
+        scene.add(lineX);
+        
+        // X3 Axis (Vertical in our mental model, mapped to Y in Three.js)
+        const ptsY = [new THREE.Vector3(0, -len, 0), new THREE.Vector3(0, len, 0)];
+        const lineY = new THREE.Line(new THREE.BufferGeometry().setFromPoints(ptsY), material);
+        scene.add(lineY);
+
+        // X2 Axis (Depth in our mental model, mapped to Z in Three.js)
+        const ptsZ = [new THREE.Vector3(0, 0, -len), new THREE.Vector3(0, 0, len)];
+        const lineZ = new THREE.Line(new THREE.BufferGeometry().setFromPoints(ptsZ), material);
+        scene.add(lineZ);
+    }
+
+    function updateLabels() {
+        if(!camera) return;
+        const width = renderer.domElement.clientWidth;
+        const height = renderer.domElement.clientHeight;
+        const offsetLen = R * 1.5;
+
+        // Helper to project 3D to 2D
+        const updatePos = (id, vec) => {
+            const el = document.getElementById(id);
+            if(!el || el.style.display === 'none') return;
+            const proj = vec.clone().project(camera);
+            if (proj.z > 1) { el.style.display = 'none'; return; } // Behind camera
+            el.style.display = 'block';
+            const x = (proj.x * 0.5 + 0.5) * width;
+            const y = -(proj.y * 0.5 - 0.5) * height;
+            el.style.left = `${x}px`;
+            el.style.top = `${y}px`;
+        };
+
+        updatePos('label-x1', new THREE.Vector3(offsetLen, 0, 0));
+        updatePos('label-x3', new THREE.Vector3(0, offsetLen, 0)); // Y is vertical
+        updatePos('label-x2', new THREE.Vector3(0, 0, offsetLen)); // Z is depth
+
+        // Label for Radius
+        const rLabel = document.getElementById('label-radius');
+        if (planeMesh.visible && !isBandMode) {
+            rLabel.style.display = 'block';
+            // Position label near the top edge of the cross section
+            const radius = Math.sqrt(Math.max(0, R*R - (currentT * R)*(currentT * R)));
+            const edgePoint = new THREE.Vector3(currentT * R, radius, 0);
+            updatePos('label-radius', edgePoint);
+            document.getElementById('r-value').innerText = (radius/R).toFixed(2);
+        } else {
+            rLabel.style.display = 'none';
+        }
+
+        // Label for Band Δt
+        const dtLabel = document.getElementById('label-dt');
+        if (isBandMode) {
+            dtLabel.style.display = 'block';
+            // Position between t and t+dt on x axis
+            const midT = currentBandT + dt/2;
+            updatePos('label-dt', new THREE.Vector3(midT * R, 0.2, 0));
+        } else {
+            dtLabel.style.display = 'none';
+        }
+
+        // --- NEW DYNAMIC EQUATION ANNOTATIONS ---
+        
+        // 1. Sphere Equation (Top Right Quadrant)
+        const eqSphere = document.getElementById('eq-sphere');
+        if (currentStep === 1) {
+            eqSphere.style.display = 'block';
+            updatePos('eq-sphere', new THREE.Vector3(R*0.7, R*0.7, R*0.7));
+        } else {
+            eqSphere.style.display = 'none';
+        }
+
+        // 2. Plane & Slice Equations (Attached to Plane & Torus)
+        const eqPlane = document.getElementById('eq-plane');
+        const eqSlice = document.getElementById('eq-slice');
+        if (planeMesh.visible && !isBandMode && currentStep !== 6 && currentStep !== 7) {
+            eqPlane.style.display = 'block';
+            eqSlice.style.display = 'block';
+            
+            // Inject live math values
+            document.getElementById('eq-t-val').innerText = currentT.toFixed(2);
+            document.getElementById('eq-r2-val').innerText = Math.max(0, 1 - currentT*currentT).toFixed(2);
+            
+            updatePos('eq-plane', new THREE.Vector3(currentT * R, R * 1.15, 0));
+            updatePos('eq-slice', new THREE.Vector3(currentT * R, -R * 1.1, R * 0.5));
+        } else {
+            eqPlane.style.display = 'none';
+            eqSlice.style.display = 'none';
+        }
+
+        // 3. U-Plane Equation (Attached to green hyperplane)
+        const eqUPlane = document.getElementById('eq-uplane');
+        if (uPlaneMesh.visible) {
+            eqUPlane.style.display = 'block';
+            // Position normal to the U-vector 
+            updatePos('eq-uplane', new THREE.Vector3(-Math.sin(currentUAngle) * R * 1.2, Math.cos(currentUAngle) * R * 1.2, 0));
+        } else {
+            eqUPlane.style.display = 'none';
+        }
+
+        // 4. Slab Inequality Equation (Attached to the slab edge)
+        const eqSlab = document.getElementById('eq-slab');
+        if (uSlabMesh.visible) {
+            eqSlab.style.display = 'block';
+            // Compute edge vector accounting for rotation and thickness
+            const slabEdgeX = targetSlabThickness * R * Math.cos(currentUAngle) - Math.sin(currentUAngle) * R * 0.8;
+            const slabEdgeY = targetSlabThickness * R * Math.sin(currentUAngle) + Math.cos(currentUAngle) * R * 0.8;
+            updatePos('eq-slab', new THREE.Vector3(slabEdgeX, slabEdgeY, R * 0.5));
+        } else {
+            eqSlab.style.display = 'none';
+        }
+    }
+
+    function updateDynamicGeometry() {
+        // Smoothly lerp T values for transitions
+        if (isBandMode) {
+            currentBandT += (targetBandT - currentBandT) * 0.1;
+            updateBandGeometry(currentBandT, dt);
+        } else {
+            currentT += (targetT - currentT) * 0.1;
+            
+            // Move Plane
+            planeMesh.position.x = currentT * R;
+            
+            // Update Cross Section Torus
+            crossSectionTorus.position.x = currentT * R;
+            // Calculate slice radius: r^2 = R^2 - x^2
+            const sliceR = Math.sqrt(Math.max(0.001, R*R - (currentT * R)*(currentT * R)));
+            
+            if (sliceR < 0.05) {
+                crossSectionTorus.visible = false;
+            } else {
+                if(planeMesh.visible) crossSectionTorus.visible = true;
+                // Avoid memory leaks by disposing old geometry
+                crossSectionTorus.geometry.dispose();
+                crossSectionTorus.geometry = new THREE.TorusGeometry(sliceR, 0.03, 16, 100);
+            }
+        }
+        
+        // Handle uGroup rotation and slab dynamically
+        currentUAngle += (targetUAngle - currentUAngle) * 0.1;
+        targetSlabThickness += (slabThickness - targetSlabThickness) * 0.1;
+        
+        // Rotate uGroup around Z axis (which maps to rotating between x1 and x3)
+        uGroup.rotation.z = currentUAngle;
+        
+        if (uSlabMesh.visible) {
+            // Update the geometry of the slab based on its thickness
+            const tEndSlab = Math.min(1, Math.max(-1, -targetSlabThickness));
+            const tStartSlab = Math.min(1, Math.max(-1, targetSlabThickness));
+            let thetaStartSlab = Math.acos(tStartSlab);
+            let thetaEndSlab = Math.acos(tEndSlab);
+            let lengthSlab = thetaEndSlab - thetaStartSlab;
+            if (lengthSlab < 0.001) lengthSlab = 0.001;
+
+            uSlabMesh.geometry.dispose();
+            uSlabMesh.geometry = new THREE.SphereGeometry(R * 1.01, 64, 64, 0, Math.PI*2, thetaStartSlab, lengthSlab);
+        }
+    }
+
+    function updateBandGeometry(t, deltaT) {
+        // t is normalized (-1 to 1). Physical space is multiplied by R.
+        // For a sphere rotated such that Y aligns with X, 'theta' is the angle from positive X.
+        // x = R * cos(theta) => theta = acos(x/R)
+        
+        // Clamp values to valid domain [-1, 1]
+        const tEnd = Math.min(1, Math.max(-1, t));
+        const tStart = Math.min(1, Math.max(-1, t + deltaT));
+        
+        // Note: acos decreases as x increases. So tStart (larger x) has a smaller theta.
+        let thetaStart = Math.acos(tStart);
+        let thetaEnd = Math.acos(tEnd);
+        
+        let length = thetaEnd - thetaStart;
+        if (length < 0.001) length = 0.001; // Avoid rendering errors
+
+        bandMesh.geometry.dispose();
+        // Slightly larger radius to sit above the main sphere
+        bandMesh.geometry = new THREE.SphereGeometry(R * 1.01, 64, 64, 0, Math.PI*2, thetaStart, length);
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        updateDynamicGeometry();
+        updateLabels();
+        renderer.render(scene, camera);
+    }
+
+    function onWindowResize() {
+        const container = document.getElementById('viewer-container');
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(container.clientWidth, container.clientHeight);
+    }
+
+    function updateStepUI() {
+        if(typeof stopAudio === 'function') stopAudio(); // Stop TTS when changing steps
+        // Hide all, show current
+        steps.forEach((el, index) => {
+            if (index + 1 === currentStep) el.classList.add('active');
+            else el.classList.remove('active');
+        });
+        
+        stepIndicator.innerText = `Step ${currentStep} of ${totalSteps}`;
+        prevBtn.disabled = currentStep === 1;
+        
+        if (currentStep === totalSteps) {
+            nextBtn.innerText = "Finish";
+            nextBtn.disabled = true;
+            nextBtn.classList.replace('bg-blue-600', 'bg-gray-400');
+        } else {
+            nextBtn.innerText = "Next Step";
+            nextBtn.disabled = false;
+            nextBtn.classList.replace('bg-gray-400', 'bg-blue-600');
+        }
+
+        applyStepLogic();
+    }
+
+    function applyStepLogic() {
+        // Reset defaults
+        planeMesh.visible = false;
+        crossSectionTorus.visible = false;
+        bandMesh.visible = false;
+        isBandMode = false;
+        wireframe.material.opacity = 0.15;
+        mainSphere.material.opacity = 0.12;
+
+        uGroup.visible = false;
+        uArrow.visible = false;
+        uPlaneMesh.visible = false;
+        uSlabMesh.visible = false;
+
+        switch(currentStep) {
+            case 1:
+                // Just the sphere
+                targetT = 0;
+                break;
+            case 2:
+                // Slider interaction
+                planeMesh.visible = true;
+                crossSectionTorus.visible = true;
+                targetT = parseFloat(tSlider.value);
+                break;
+            case 3:
+                // Preset buttons
+                planeMesh.visible = true;
+                crossSectionTorus.visible = true;
+                // Maintain current targetT from whatever button is active
+                break;
+            case 4:
+                // Band interaction
+                isBandMode = true;
+                bandMesh.visible = true;
+                wireframe.material.opacity = 0.05; // dim sphere to pop band
+                mainSphere.material.opacity = 0.08;
+                targetBandT = parseFloat(bandSlider.value);
+                break;
+            case 5:
+                // Recap, show generic slice near center
+                planeMesh.visible = true;
+                crossSectionTorus.visible = true;
+                targetT = 0.2; // slight offset for visual interest
+                break;
+            case 6:
+                // A5: Arbitrary direction u
+                uGroup.visible = true;
+                uArrow.visible = true;
+                uPlaneMesh.visible = true;
+                // Dim standard sphere elements to emphasize u
+                wireframe.material.opacity = 0.05;
+                mainSphere.material.opacity = 0.08;
+                break;
+            case 7:
+                // A5: The thin slab
+                uGroup.visible = true;
+                uArrow.visible = true;
+                uPlaneMesh.visible = true;
+                uPlaneMesh.material.opacity = 0.12; // Dim hyperplane
+                uSlabMesh.visible = true; // Show slab
+                wireframe.material.opacity = 0.05;
+                mainSphere.material.opacity = 0.08;
+                break;
+        }
+    }
+
+    nextBtn.addEventListener('click', () => {
+        if (currentStep < totalSteps) {
+            currentStep++;
+            updateStepUI();
+            
+            // Render math for new step if not done (auto-render handles initial load, but good practice if dynamically unhiding)
+            renderMathInElement(document.getElementById(`step-${currentStep}`));
+        }
+    });
+
+    prevBtn.addEventListener('click', () => {
+        if (currentStep > 1) {
+            currentStep--;
+            updateStepUI();
+        }
+    });
+
+    tSlider.addEventListener('input', (e) => {
+        targetT = parseFloat(e.target.value);
+        sliderVal.innerText = targetT.toFixed(2);
+    });
+
+    bandSlider.addEventListener('input', (e) => {
+        targetBandT = parseFloat(e.target.value);
+    });
+
+    if (uAngleSlider) {
+        uAngleSlider.addEventListener('input', (e) => {
+            targetUAngle = (parseFloat(e.target.value) * Math.PI) / 180;
+            uAngleVal.innerText = e.target.value + '°';
+        });
+    }
+
+    if (slabSlider) {
+        slabSlider.addEventListener('input', (e) => {
+            slabThickness = parseFloat(e.target.value);
+        });
+    }
+
+    // Global function for Step 3 buttons
+    window.setT = function(val, btnElement) {
+        targetT = val;
+        // Update active class on buttons
+        const btns = document.querySelectorAll('.t-btn');
+        btns.forEach(b => b.classList.remove('active'));
+        if(btnElement) btnElement.classList.add('active');
+    };
+
+    // Initialize System
+    window.onload = function() {
+        init3D();
+        updateStepUI();
+    };
+
+    const aiChatBtn = document.getElementById('ai-chat-btn');
+    const aiChatWindow = document.getElementById('ai-chat-window');
+    const closeChatBtn = document.getElementById('close-chat-btn');
+    const chatForm = document.getElementById('chat-form');
+    const chatInput = document.getElementById('chat-input');
+    const chatMessages = document.getElementById('chat-messages');
+
+    let chatHistory = [];
+    const systemPrompt = "You are an AI tutor helping a student understand high-dimensional geometry, specifically the concentration of measure (near-equator phenomenon) on a unit sphere, and how it generalizes to any arbitrary direction vector u (creating a thin slab). The student is interacting with a 3D visualization showing a 3D sphere being sliced to explain this. Be concise, encouraging, and use simple analogies. Format math using LaTeX notation like $$x^2$$. Keep responses relatively short and suitable for a chat interface.";
+
+    aiChatBtn.addEventListener('click', () => {
+        aiChatWindow.classList.toggle('hidden');
+        if (!aiChatWindow.classList.contains('hidden')) {
+            chatInput.focus();
+        }
+    });
+
+    closeChatBtn.addEventListener('click', () => {
+        aiChatWindow.classList.add('hidden');
+    });
+
+    chatForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const message = chatInput.value.trim();
+        if (!message) return;
+
+        // Add user message to UI
+        appendMessage(message, 'user');
+        chatInput.value = '';
+        
+        // Add loading indicator
+        const loadingId = appendMessage('Thinking...', 'tutor', true);
+
+        try {
+            const responseText = await callGeminiAPI(message);
+            updateMessage(loadingId, responseText);
+            // Render MathJax/KaTeX for the new message
+            if (window.renderMathInElement) {
+                renderMathInElement(document.getElementById(loadingId));
+            }
+        } catch (error) {
+            console.error(error);
+            updateMessage(loadingId, 'Sorry, there was an error connecting to the AI tutor.');
+            document.getElementById(loadingId).classList.add('text-red-600', 'bg-red-50');
+        }
+    });
+
+    function appendMessage(text, sender, isLoading = false) {
+        const msgDiv = document.createElement('div');
+        const id = 'msg-' + Date.now();
+        msgDiv.id = id;
+        
+        const isUser = sender === 'user';
+        const baseClasses = "p-4 max-w-[85%] leading-relaxed text-sm shadow-sm ";
+        
+        if (isUser) {
+            msgDiv.className = baseClasses + "bg-blue-600 text-white rounded-2xl rounded-tr-sm self-end";
+        } else {
+            msgDiv.className = baseClasses + `bg-white border border-gray-100 text-gray-800 rounded-2xl rounded-tl-sm self-start ${isLoading ? 'animate-pulse text-gray-400' : ''}`;
+        }
+        
+        msgDiv.innerText = text;
+        chatMessages.appendChild(msgDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        return id;
+    }
+
+    function updateMessage(id, text) {
+        const msgDiv = document.getElementById(id);
+        if (msgDiv) {
+            msgDiv.innerHTML = text;
+            msgDiv.classList.remove('animate-pulse', 'text-gray-400');
+        }
+    }
+
+    async function callGeminiAPI(userQuery) {
+        chatHistory.push({ role: "user", parts: [{ text: userQuery }] });
+        
+        const payload = {
+            contents: chatHistory,
+            systemInstruction: { parts: [{ text: systemPrompt }] },
+        };
+        
+        const apiKey = ""; 
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+        
+        let retries = 3;
+        let delay = 1000;
+        
+        while (retries > 0) {
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    const candidate = result.candidates?.[0];
+                    if (candidate && candidate.content?.parts?.[0]?.text) {
+                        const replyText = candidate.content.parts[0].text;
+                        chatHistory.push({ role: "model", parts: [{ text: replyText }] });
+                        return replyText;
+                    }
+                    throw new Error("Invalid response structure");
+                }
+                
+                if (response.status === 429) {
+                    // Rate limited, apply exponential backoff
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay *= 2;
+                    retries--;
+                } else {
+                    throw new Error(`API Error: ${response.status}`);
+                }
+            } catch (err) {
+                if (retries === 1) throw err; // Throw on last retry
+                await new Promise(resolve => setTimeout(resolve, delay));
+                delay *= 2;
+                retries--;
+            }
+        }
+        throw new Error("Max retries reached");
+    }
+
+    // --- NEW FEATURE 1: AI Audio Guide (Gemini TTS API) ---
+    const ttsBtn = document.getElementById('tts-btn');
+    const ttsLabel = document.getElementById('tts-label');
+    let currentAudio = null;
+
+    function stopAudio() {
+        if (currentAudio && !currentAudio.paused) {
+            currentAudio.pause();
+            currentAudio = null;
+            ttsLabel.innerText = "Listen";
+            ttsBtn.classList.remove('animate-pulse', 'text-indigo-800');
+        }
+    }
+
+    function base64ToArrayBuffer(base64) {
+        const binaryString = window.atob(base64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+        return bytes.buffer;
+    }
+
+    function pcmToWav(pcm16, sampleRate) {
+        const numChannels = 1;
+        const bitsPerSample = 16;
+        const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
+        const blockAlign = numChannels * (bitsPerSample / 8);
+        const dataSize = pcm16.byteLength;
+        const buffer = new ArrayBuffer(44 + dataSize);
+        const view = new DataView(buffer);
+
+        const writeString = (view, offset, string) => {
+            for (let i = 0; i < string.length; i++) { view.setUint8(offset + i, string.charCodeAt(i)); }
+        };
+
+        writeString(view, 0, 'RIFF');
+        view.setUint32(4, 36 + dataSize, true);
+        writeString(view, 8, 'WAVE');
+        writeString(view, 12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, numChannels, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, byteRate, true);
+        view.setUint16(32, blockAlign, true);
+        view.setUint16(34, bitsPerSample, true);
+        writeString(view, 36, 'data');
+        view.setUint32(40, dataSize, true);
+
+        let offset = 44;
+        for (let i = 0; i < pcm16.length; i++, offset += 2) {
+            view.setInt16(offset, pcm16[i], true);
+        }
+        return new Blob([buffer], { type: 'audio/wav' });
+    }
+
+    ttsBtn.addEventListener('click', async () => {
+        if (currentAudio && !currentAudio.paused) {
+            stopAudio();
+            return;
+        }
+
+        const stepEl = document.getElementById(`step-${currentStep}`);
+        // Extract text and strip out interactive UI button texts
+        let textToSpeak = stepEl.innerText.replace(/Drag to change.*/g, '').replace(/Move the band.*/g, '').replace(/Generate AI.*/g, '');
+        const prompt = `Say in an engaging, friendly, and educational tone as a math teacher guiding a student through a 3D visualization: ${textToSpeak}`;
+
+        ttsLabel.innerText = "Generating...";
+        ttsBtn.classList.add('animate-pulse');
+        ttsBtn.disabled = true;
+
+        try {
+            const payload = {
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: {
+                    responseModalities: ["AUDIO"],
+                    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } } } // Puck is upbeat
+                },
+                model: "gemini-2.5-flash-preview-tts"
+            };
+
+            const apiKey = "";
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+            
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            
+            const result = await response.json();
+            const part = result?.candidates?.[0]?.content?.parts?.[0];
+            
+            if (part?.inlineData?.data && part.inlineData.mimeType.startsWith("audio/")) {
+                const sampleRateMatch = part.inlineData.mimeType.match(/rate=(\d+)/);
+                const sampleRate = sampleRateMatch ? parseInt(sampleRateMatch[1], 10) : 24000;
+                
+                const pcmDataBuffer = base64ToArrayBuffer(part.inlineData.data);
+                const pcm16 = new Int16Array(pcmDataBuffer);
+                const wavBlob = pcmToWav(pcm16, sampleRate);
+                
+                currentAudio = new Audio(URL.createObjectURL(wavBlob));
+                currentAudio.onended = stopAudio;
+                currentAudio.play();
+                
+                ttsLabel.innerText = "Stop Audio";
+                ttsBtn.classList.remove('animate-pulse');
+                ttsBtn.classList.add('text-indigo-800');
+            } else {
+                throw new Error("Invalid audio response");
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Could not generate audio explanation at this time.");
+            ttsLabel.innerText = "Listen";
+        } finally {
+            ttsBtn.classList.remove('animate-pulse');
+            ttsBtn.disabled = false;
+        }
+    });
+
+    // --- NEW FEATURE 2: AI Knowledge Check (Structured JSON Generation) ---
+    const generateQuizBtn = document.getElementById('generate-quiz-btn');
+    const quizContainer = document.getElementById('quiz-container');
+
+    generateQuizBtn.addEventListener('click', async () => {
+        generateQuizBtn.innerHTML = '<svg class="animate-spin -ml-1 mr-2 h-5 w-5 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Crafting your quiz...';
+        generateQuizBtn.disabled = true;
+
+        const payload = {
+            contents: [{ role: "user", parts: [{ text: "Generate a 2-question multiple choice quiz testing the student's understanding of the high-dimensional near-equator phenomenon (concentration of measure) that was just taught. Make the questions conceptually focused on the shrinking radius of cross-sections and the implication for surface area as dimensions increase. Return strictly in JSON." }] }],
+            generationConfig: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: "ARRAY",
+                    items: {
+                        type: "OBJECT",
+                        properties: {
+                            question: { type: "STRING" },
+                            options: { type: "ARRAY", items: { type: "STRING" } },
+                            correctAnswerIndex: { type: "INTEGER" },
+                            explanation: { type: "STRING", description: "Brief explanation of why the answer is correct." }
+                        },
+                        required: ["question", "options", "correctAnswerIndex", "explanation"]
+                    }
+                }
+            }
+        };
+
+        try {
+            const apiKey = ""; 
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+            
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+            
+            if (result.candidates && result.candidates.length > 0) {
+                const jsonStr = result.candidates[0].content.parts[0].text;
+                const quizData = JSON.parse(jsonStr);
+                renderQuiz(quizData);
+            } else {
+                throw new Error("No candidates returned");
+            }
+        } catch (err) {
+            console.error(err);
+            generateQuizBtn.innerHTML = 'Error generating quiz. Try again.';
+            generateQuizBtn.disabled = false;
+        }
+    });
+
+    function renderQuiz(questions) {
+        generateQuizBtn.style.display = 'none';
+        quizContainer.classList.remove('hidden');
+        quizContainer.innerHTML = '<h3 class="font-bold text-gray-800 text-lg border-b pb-2">Knowledge Check</h3>';
+        
+        questions.forEach((q, qIndex) => {
+            const qDiv = document.createElement('div');
+            qDiv.className = 'bg-gray-50 p-4 rounded-xl border border-gray-200 text-sm';
+            
+            let optionsHtml = q.options.map((opt, i) => `
+                <button class="w-full text-left px-4 py-2.5 rounded-lg border border-gray-300 bg-white hover:bg-indigo-50 hover:border-indigo-300 transition-colors mt-2 option-btn font-medium text-gray-700 shadow-sm" data-qindex="${qIndex}" data-optindex="${i}">
+                    ${opt}
+                </button>
+            `).join('');
+
+            qDiv.innerHTML = `
+                <p class="font-bold text-gray-900 mb-3 text-base">${qIndex + 1}. ${q.question}</p>
+                <div class="space-y-2">${optionsHtml}</div>
+                <div id="explanation-${qIndex}" class="mt-4 hidden p-3 rounded-lg bg-white text-sm border leading-relaxed"></div>
+            `;
+            quizContainer.appendChild(qDiv);
+        });
+
+        // Add event listeners to options
+        document.querySelectorAll('.option-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const qIdx = parseInt(e.target.dataset.qindex);
+                const optIdx = parseInt(e.target.dataset.optindex);
+                const question = questions[qIdx];
+                const explDiv = document.getElementById(`explanation-${qIdx}`);
+                
+                // Disable all siblings to prevent multiple guesses
+                const siblings = e.target.parentElement.querySelectorAll('.option-btn');
+                siblings.forEach(s => { s.disabled = true; s.classList.add('opacity-70', 'cursor-not-allowed'); });
+
+                e.target.classList.remove('opacity-70');
+                
+                if (optIdx === question.correctAnswerIndex) {
+                    e.target.classList.replace('border-gray-300', 'border-green-500');
+                    e.target.classList.replace('bg-white', 'bg-green-50');
+                    e.target.classList.replace('text-gray-700', 'text-green-800');
+                    explDiv.innerHTML = `<span class="text-green-600 font-bold block mb-1">Correct!</span> <span class="text-gray-700">${question.explanation}</span>`;
+                    explDiv.classList.add('border-green-200');
+                } else {
+                    e.target.classList.replace('border-gray-300', 'border-red-400');
+                    e.target.classList.replace('bg-white', 'bg-red-50');
+                    e.target.classList.replace('text-gray-700', 'text-red-800');
+                    
+                    // Highlight correct option
+                    const correctBtn = siblings[question.correctAnswerIndex];
+                    correctBtn.classList.remove('opacity-70');
+                    correctBtn.classList.replace('border-gray-300', 'border-green-500');
+                    correctBtn.classList.replace('bg-white', 'bg-green-50');
+                    correctBtn.classList.replace('text-gray-700', 'text-green-800');
+                    
+                    explDiv.innerHTML = `<span class="text-red-500 font-bold block mb-1">Incorrect.</span> <span class="text-gray-700">${question.explanation}</span>`;
+                    explDiv.classList.add('border-red-200');
+                }
+                explDiv.classList.remove('hidden');
+            });
+        });
+        
+        // Render any KaTeX math syntax generated in the quiz
+        if (window.renderMathInElement) {
+            renderMathInElement(quizContainer);
+        }
+    }
+</script>
+</body>
+</html>
